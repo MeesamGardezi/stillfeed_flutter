@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "4319556033",
+    "project_id": "stillfeed-1",
+    "storage_bucket": "stillfeed-1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4319556033:android:0350879a418f626e067f40",
+        "android_client_info": {
+          "package_name": "com.example.buildersolve_js_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcq5k5VUUFt8DZlQ3yZA2ojucAF1Dd6zM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
