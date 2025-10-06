@@ -1,4 +1,4 @@
-import 'user_model.dart';
+import '../../core/models/user_model.dart';
 
 enum AuthStatus {
   initial,
