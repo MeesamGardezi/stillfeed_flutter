@@ -6,21 +6,78 @@ import '../../core/models/user_model.dart';
 
 class AuthService {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
-  final Dio _dio = Dio(BaseOptions(
+  final Dio _dio;
+
+  AuthService() : _dio = Dio(BaseOptions(
     baseUrl: ApiConfig.baseUrl,
     connectTimeout: ApiConfig.connectTimeout,
     receiveTimeout: ApiConfig.receiveTimeout,
     sendTimeout: ApiConfig.sendTimeout,
-  ));
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  )) {
+    // Add interceptor to automatically inject auth token
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          try {
+            final token = await _getIdToken();
+            if (token != null) {
+              options.headers['Authorization'] = 'Bearer $token';
+              print('✓ Token added to request: ${options.path}');
+            } else {
+              print('⚠ No token available for: ${options.path}');
+            }
+          } catch (e) {
+            print('✗ Error getting token in interceptor: $e');
+          }
+          return handler.next(options);
+        },
+        onError: (error, handler) {
+          print('✗ Dio error: ${error.type}, ${error.message}');
+          if (error.response != null) {
+            print('  Status: ${error.response?.statusCode}');
+            print('  Data: ${error.response?.data}');
+          }
+          return handler.next(error);
+        },
+      ),
+    );
+  }
 
   User? get currentUser => _firebaseAuth.currentUser;
 
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 
-  Future<String?> _getIdToken() async {
+  /// Get ID token with retry logic
+  Future<String?> _getIdToken({int maxRetries = 3}) async {
     final user = _firebaseAuth.currentUser;
-    if (user == null) return null;
-    return await user.getIdToken();
+    if (user == null) {
+      print('⚠ No current user for token fetch');
+      return null;
+    }
+
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Force refresh on first attempt after sign-in to ensure fresh token
+        final token = await user.getIdToken(attempt == 0);
+        if (token != null && token.isNotEmpty) {
+          print('✓ Token fetched successfully on attempt ${attempt + 1}');
+          return token;
+        }
+      } catch (e) {
+        print('✗ Token fetch attempt ${attempt + 1} failed: $e');
+        if (attempt < maxRetries - 1) {
+          // Wait before retrying: 100ms, 300ms, 500ms
+          final delay = 100 + (attempt * 200);
+          print('  Retrying in ${delay}ms...');
+          await Future.delayed(Duration(milliseconds: delay));
+        }
+      }
+    }
+    
+    throw AuthException('Failed to retrieve authentication token after $maxRetries attempts');
   }
 
   Future<UserCredential> signUpWithEmail({
@@ -28,14 +85,23 @@ class AuthService {
     required String password,
   }) async {
     try {
+      print('Starting sign up for: $email');
       final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+      
+      print('✓ Firebase user created, waiting for initialization...');
+      // Wait a moment for Firebase to fully initialize the user
+      await Future.delayed(const Duration(milliseconds: 300));
+      print('✓ Sign up complete');
+      
       return userCredential;
     } on FirebaseAuthException catch (e) {
+      print('✗ Firebase auth error: ${e.code}');
       throw AuthException(_getFirebaseErrorMessage(e));
     } catch (e) {
+      print('✗ Sign up error: $e');
       throw AuthException('Sign up failed: ${e.toString()}');
     }
   }
@@ -46,9 +112,7 @@ class AuthService {
     String? bio,
   }) async {
     try {
-      final token = await _getIdToken();
-      if (token == null) throw AuthException('Not authenticated');
-
+      print('Registering user profile...');
       final response = await _dio.post(
         ApiConfig.register,
         data: {
@@ -56,19 +120,20 @@ class AuthService {
           'email': email,
           'bio': bio,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
+        print('✓ User profile registered');
         return UserModel.fromJson(response.data['data']);
       } else {
+        print('✗ Unexpected status code: ${response.statusCode}');
         throw ServerException('Failed to register user profile');
       }
     } on DioException catch (e) {
+      print('✗ Registration DioException: ${e.type}');
       throw _handleDioError(e);
     } catch (e) {
+      print('✗ Registration error: $e');
       throw ServerException('Registration failed: ${e.toString()}');
     }
   }
@@ -78,38 +143,44 @@ class AuthService {
     required String password,
   }) async {
     try {
+      print('Starting sign in for: $email');
       final userCredential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+      
+      print('✓ Firebase sign in successful, waiting for initialization...');
+      // Wait a moment for Firebase to fully initialize the session
+      await Future.delayed(const Duration(milliseconds: 300));
+      print('✓ Sign in complete');
+      
       return userCredential;
     } on FirebaseAuthException catch (e) {
+      print('✗ Firebase auth error: ${e.code}');
       throw AuthException(_getFirebaseErrorMessage(e));
     } catch (e) {
+      print('✗ Sign in error: $e');
       throw AuthException('Sign in failed: ${e.toString()}');
     }
   }
 
   Future<UserModel> getUserProfile() async {
     try {
-      final token = await _getIdToken();
-      if (token == null) throw AuthException('Not authenticated');
-
-      final response = await _dio.get(
-        ApiConfig.profile,
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      print('Fetching user profile...');
+      final response = await _dio.get(ApiConfig.profile);
 
       if (response.statusCode == 200) {
+        print('✓ User profile fetched');
         return UserModel.fromJson(response.data['data']);
       } else {
+        print('✗ Unexpected status code: ${response.statusCode}');
         throw ServerException('Failed to fetch user profile');
       }
     } on DioException catch (e) {
+      print('✗ Get profile DioException: ${e.type}');
       throw _handleDioError(e);
     } catch (e) {
+      print('✗ Get profile error: $e');
       throw ServerException('Failed to get profile: ${e.toString()}');
     }
   }
@@ -120,9 +191,6 @@ class AuthService {
     String? profilePicUrl,
   }) async {
     try {
-      final token = await _getIdToken();
-      if (token == null) throw AuthException('Not authenticated');
-
       final data = <String, dynamic>{};
       if (displayName != null) data['displayName'] = displayName;
       if (bio != null) data['bio'] = bio;
@@ -131,9 +199,6 @@ class AuthService {
       final response = await _dio.put(
         ApiConfig.profile,
         data: data,
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
 
       if (response.statusCode == 200) {
@@ -168,16 +233,7 @@ class AuthService {
 
   Future<void> deleteAccount() async {
     try {
-      final token = await _getIdToken();
-      if (token == null) throw AuthException('Not authenticated');
-
-      await _dio.delete(
-        ApiConfig.deleteAccount,
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
-
+      await _dio.delete(ApiConfig.deleteAccount);
       await _firebaseAuth.currentUser?.delete();
     } on DioException catch (e) {
       throw _handleDioError(e);
@@ -210,9 +266,24 @@ class AuthService {
   }
 
   Exception _handleDioError(DioException e) {
+    // Log for debugging
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    print('DioException Details:');
+    print('  Type: ${e.type}');
+    print('  Message: ${e.message}');
+    print('  Response status: ${e.response?.statusCode}');
+    print('  Response data: ${e.response?.data}');
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     if (e.response != null) {
       final statusCode = e.response!.statusCode;
-      final message = e.response!.data['message'] ?? 'Request failed';
+      final data = e.response!.data;
+      
+      // Try to extract message from response
+      String message = 'Request failed';
+      if (data is Map<String, dynamic>) {
+        message = data['message'] ?? data['error']?['message'] ?? message;
+      }
       
       if (statusCode == 401) {
         return AuthException(message);
@@ -224,12 +295,17 @@ class AuthService {
         return ServerException(message);
       }
     } else if (e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.receiveTimeout) {
-      return NetworkException('Connection timeout');
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      return NetworkException('Connection timeout. Please check your internet connection and try again.');
     } else if (e.type == DioExceptionType.connectionError) {
-      return NetworkException('No internet connection');
+      return NetworkException('Unable to connect to server. Please check your internet connection.');
+    } else if (e.type == DioExceptionType.badCertificate) {
+      return NetworkException('Security certificate error. Please check your connection.');
+    } else if (e.type == DioExceptionType.cancel) {
+      return NetworkException('Request was cancelled');
     } else {
-      return NetworkException('Network error occurred');
+      return NetworkException('Network error: ${e.message ?? "Please check your internet connection"}');
     }
   }
 }

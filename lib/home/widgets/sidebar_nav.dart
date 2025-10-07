@@ -5,7 +5,7 @@ import '../../../core/constants/strings.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/dimensions.dart';
 import '../../../core/utils/helpers.dart';
-import '../../auth/services/auth_notifier';
+import '../../auth/services/auth_notifier.dart';
 
 class SidebarNav extends StatelessWidget {
   final String currentPath;

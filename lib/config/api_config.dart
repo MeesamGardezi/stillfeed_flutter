@@ -1,6 +1,29 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform;
+
 class ApiConfig {
-  // Change this to your backend URL
-  static const String baseUrl = 'http://localhost:3000/api';
+  // Dynamic base URL based on platform
+  static String get baseUrl {
+    if (kIsWeb) {
+      // For web - assumes backend on same machine
+      return 'http://localhost:3000/api';
+    } else {
+      try {
+        if (Platform.isAndroid) {
+          // For Android emulator - 10.0.2.2 maps to host machine's localhost
+          return 'http://10.0.2.2:3000/api';
+        } else if (Platform.isIOS) {
+          // For iOS simulator - localhost works
+          return 'http://localhost:3000/api';
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    // Default fallback - change this to your computer's IP for physical devices
+    // Example: return 'http://192.168.1.100:3000/api';
+    return 'http://localhost:3000/api';
+  }
   
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 30);
@@ -49,4 +72,9 @@ class ApiConfig {
   // Report Endpoints
   static const String createReport = reportsBase;
   static const String myReports = '$reportsBase/my-reports';
+  
+  // Helper to print current base URL (for debugging)
+  static void printBaseUrl() {
+    print('🌐 API Base URL: $baseUrl');
+  }
 }

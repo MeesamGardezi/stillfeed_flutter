@@ -24,18 +24,48 @@ class VideoService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          // Add auth token if user is logged in
-          final user = _auth.currentUser;
-          if (user != null) {
-            final token = await user.getIdToken();
-            if (token != null) {
-              options.headers['Authorization'] = 'Bearer $token';
+          try {
+            // Add auth token if user is logged in
+            final user = _auth.currentUser;
+            if (user != null) {
+              // Retry token fetch with small delays
+              String? token;
+              for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                  token = await user.getIdToken(attempt == 0);
+                  if (token != null && token.isNotEmpty) {
+                    print('VideoService: ✓ Token fetched on attempt ${attempt + 1} for ${options.path}');
+                    break;
+                  }
+                } catch (e) {
+                  print('VideoService: ✗ Token fetch attempt ${attempt + 1} failed: $e');
+                  if (attempt < 2) {
+                    await Future.delayed(Duration(milliseconds: 100 + (attempt * 200)));
+                  }
+                }
+              }
+              
+              if (token != null) {
+                options.headers['Authorization'] = 'Bearer $token';
+              } else {
+                print('VideoService: ⚠ No token available for request: ${options.path}');
+              }
+            } else {
+              print('VideoService: ⚠ No user logged in for request: ${options.path}');
             }
+          } catch (e) {
+            print('VideoService: ✗ Error in request interceptor: $e');
           }
           return handler.next(options);
         },
         onError: (error, handler) {
-          // Handle errors globally if needed
+          print('VideoService: ✗ Request error for ${error.requestOptions.path}:');
+          print('  Type: ${error.type}');
+          print('  Message: ${error.message}');
+          if (error.response != null) {
+            print('  Status: ${error.response?.statusCode}');
+            print('  Data: ${error.response?.data}');
+          }
           return handler.next(error);
         },
       ),
@@ -48,6 +78,7 @@ class VideoService {
     int limit = 20,
   }) async {
     try {
+      print('VideoService: Fetching feed (page: $page, limit: $limit)');
       final response = await _dio.get(
         ApiConfig.feed,
         queryParameters: {
@@ -56,16 +87,19 @@ class VideoService {
         },
       );
 
+      print('VideoService: ✓ Feed fetched successfully');
       return ApiResponse<VideoFeedResponse>.fromJson(
         response.data,
         (data) => VideoFeedResponse.fromJson(data as Map<String, dynamic>),
       );
     } on DioException catch (e) {
+      print('VideoService: ✗ Feed fetch error: ${e.type}');
       return ApiResponse<VideoFeedResponse>(
         success: false,
         message: _handleError(e),
       );
     } catch (e) {
+      print('VideoService: ✗ Unexpected error: $e');
       return ApiResponse<VideoFeedResponse>(
         success: false,
         message: 'An unexpected error occurred: ${e.toString()}',
@@ -79,6 +113,7 @@ class VideoService {
     int limit = 20,
   }) async {
     try {
+      print('VideoService: Fetching following feed (page: $page, limit: $limit)');
       final response = await _dio.get(
         ApiConfig.followingFeed,
         queryParameters: {
@@ -87,16 +122,19 @@ class VideoService {
         },
       );
 
+      print('VideoService: ✓ Following feed fetched successfully');
       return ApiResponse<VideoFeedResponse>.fromJson(
         response.data,
         (data) => VideoFeedResponse.fromJson(data as Map<String, dynamic>),
       );
     } on DioException catch (e) {
+      print('VideoService: ✗ Following feed fetch error: ${e.type}');
       return ApiResponse<VideoFeedResponse>(
         success: false,
         message: _handleError(e),
       );
     } catch (e) {
+      print('VideoService: ✗ Unexpected error: $e');
       return ApiResponse<VideoFeedResponse>(
         success: false,
         message: 'An unexpected error occurred: ${e.toString()}',
@@ -500,7 +538,7 @@ class VideoService {
       case DioExceptionType.badCertificate:
         return 'Security certificate error.';
       default:
-        return 'An unexpected error occurred.';
+        return 'An unexpected error occurred. Please check your internet connection.';
     }
   }
 }

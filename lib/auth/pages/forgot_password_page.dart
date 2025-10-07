@@ -10,7 +10,7 @@ import '../../../core/utils/helpers.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../core/widgets/custom_textfield.dart';
-import '../services/auth_notifier';
+import '../services/auth_notifier.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});

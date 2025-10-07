@@ -11,7 +11,7 @@ import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../core/widgets/custom_textfield.dart';
 import '../models/auth_state.dart';
-import '../services/auth_notifier';
+import '../services/auth_notifier.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
