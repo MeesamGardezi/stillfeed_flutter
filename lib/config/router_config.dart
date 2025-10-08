@@ -17,7 +17,8 @@ class AppRouter {
   static final GoRouter router = GoRouter(
     initialLocation: AppRoutes.feed,
     redirect: (context, state) async {
-      final authStatus = globalAuthNotifier.value.status;
+      final authState = globalAuthNotifier.value;
+      final authStatus = authState.status;
       final isAuthRoute =
           state.matchedLocation == AppRoutes.login ||
           state.matchedLocation == AppRoutes.signup ||
@@ -25,43 +26,52 @@ class AppRouter {
 
       print('Router redirect - Location: ${state.matchedLocation}, Auth Status: $authStatus');
 
-      // If initial state, check authentication status first
+      // Initial app load - check auth status
       if (authStatus == AuthStatus.initial) {
         print('Router: Initial state, checking auth...');
         await globalAuthNotifier.checkAuthStatus();
         final newStatus = globalAuthNotifier.value.status;
         print('Router: Auth check complete, new status: $newStatus');
         
-        // After checking, redirect based on new status
         if (newStatus == AuthStatus.authenticated && isAuthRoute) {
           return AppRoutes.feed;
         } else if (newStatus == AuthStatus.unauthenticated && !isAuthRoute) {
-          return AppRoutes.login;
-        } else if (newStatus == AuthStatus.error && !isAuthRoute) {
           return AppRoutes.login;
         }
         return null;
       }
 
-      // If loading, show splash screen
-      if (authStatus == AuthStatus.loading) {
-        print('Router: Loading state');
+      // Don't redirect during active auth operations on auth pages
+      if (authStatus == AuthStatus.loading && isAuthRoute) {
+        print('Router: Loading state on auth page, no redirect');
+        return null;
+      }
+
+      // Show splash only for initial loading on non-auth pages
+      if (authStatus == AuthStatus.loading && !isAuthRoute) {
+        print('Router: Loading state on protected page, show splash');
         return '/splash';
       }
 
-      // If error, redirect to login
+      // Stay on auth page to show errors
+      if (authStatus == AuthStatus.error && isAuthRoute) {
+        print('Router: Error state on auth page, staying to show error');
+        return null;
+      }
+
+      // Redirect to login on error for protected pages
       if (authStatus == AuthStatus.error && !isAuthRoute) {
-        print('Router: Error state, redirecting to login');
+        print('Router: Error state on protected page, redirecting to login');
         return AppRoutes.login;
       }
 
-      // If not authenticated, redirect to login (except for auth routes)
+      // Redirect unauthenticated users to login
       if (authStatus == AuthStatus.unauthenticated && !isAuthRoute) {
         print('Router: Not authenticated, redirecting to login');
         return AppRoutes.login;
       }
 
-      // If authenticated, redirect away from auth routes
+      // Redirect authenticated users away from auth pages
       if (authStatus == AuthStatus.authenticated && isAuthRoute) {
         print('Router: Already authenticated, redirecting to feed');
         return AppRoutes.feed;

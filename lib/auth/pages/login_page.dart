@@ -27,11 +27,16 @@ class _LoginPageState extends State<LoginPage> {
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     globalAuthNotifier.addListener(_onAuthStateChanged);
+    // Clear any existing errors when page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      globalAuthNotifier.clearError();
+    });
   }
 
   @override
@@ -47,16 +52,27 @@ class _LoginPageState extends State<LoginPage> {
   void _onAuthStateChanged() {
     if (!mounted) return;
 
+    final authState = globalAuthNotifier.value;
+    
     setState(() {
-      _isLoading = globalAuthNotifier.value.status == AuthStatus.loading;
+      _isLoading = authState.status == AuthStatus.loading;
+      _errorMessage = authState.status == AuthStatus.error 
+          ? authState.errorMessage 
+          : null;
     });
 
-    if (globalAuthNotifier.value.status == AuthStatus.authenticated) {
+    // Only navigate if authentication is successful
+    if (authState.status == AuthStatus.authenticated) {
       context.go(AppRoutes.feed);
     }
   }
 
   Future<void> _handleLogin() async {
+    // Clear previous error
+    setState(() {
+      _errorMessage = null;
+    });
+
     if (!_formKey.currentState!.validate()) return;
 
     try {
@@ -64,14 +80,10 @@ class _LoginPageState extends State<LoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      // Navigation will happen automatically via _onAuthStateChanged
     } catch (e) {
-      if (mounted) {
-        Helpers.showSnackBar(
-          context,
-          Helpers.getErrorMessage(e) ?? AppStrings.loginFailed,
-          isError: true,
-        );
-      }
+      // Error is already handled in AuthNotifier and will show via _errorMessage
+      print('Login error handled: $e');
     }
   }
 
@@ -160,12 +172,47 @@ class _LoginPageState extends State<LoginPage> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppDimensions.paddingXLarge),
+          
+          // Error message display
+          if (_errorMessage != null) ...[
+            Container(
+              padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+              decoration: BoxDecoration(
+                color: AppColors.errorLight,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
+                border: Border.all(color: AppColors.error.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    color: AppColors.error,
+                    size: AppDimensions.iconMedium,
+                  ),
+                  const SizedBox(width: AppDimensions.paddingSmall),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        fontSize: AppDimensions.fontSmall,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppDimensions.paddingMedium),
+          ],
+          
           CustomTextField(
             label: AppStrings.email,
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             prefixIcon: Icons.email_outlined,
             validator: Validators.validateEmail,
+            focusNode: _emailFocusNode,
+            enabled: !_isLoading,
             onFieldSubmitted: (_) {
               FocusScope.of(context).requestFocus(_passwordFocusNode);
             },
@@ -178,13 +225,14 @@ class _LoginPageState extends State<LoginPage> {
             prefixIcon: Icons.lock_outlined,
             validator: Validators.validatePassword,
             focusNode: _passwordFocusNode,
+            enabled: !_isLoading,
             onFieldSubmitted: (_) => _handleLogin(),
           ),
           const SizedBox(height: AppDimensions.paddingSmall),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () => context.push(AppRoutes.forgotPassword),
+              onPressed: _isLoading ? null : () => context.push(AppRoutes.forgotPassword),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppDimensions.paddingSmall,
@@ -196,7 +244,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Text(
                 AppStrings.forgotPassword,
                 style: TextStyle(
-                  color: AppColors.accentGreen,
+                  color: _isLoading ? AppColors.textTertiary : AppColors.accentGreen,
                   fontSize: AppDimensions.fontSmall,
                   fontWeight: FontWeight.w500,
                 ),
@@ -221,7 +269,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               TextButton(
-                onPressed: () => context.go(AppRoutes.signup),
+                onPressed: _isLoading ? null : () => context.go(AppRoutes.signup),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppDimensions.paddingSmall,
@@ -232,7 +280,7 @@ class _LoginPageState extends State<LoginPage> {
                 child: Text(
                   AppStrings.signup,
                   style: TextStyle(
-                    color: AppColors.accentGreen,
+                    color: _isLoading ? AppColors.textTertiary : AppColors.accentGreen,
                     fontSize: AppDimensions.fontSmall,
                     fontWeight: FontWeight.w600,
                   ),

@@ -18,30 +18,21 @@ class AuthNotifier extends ValueNotifier<AuthState> {
     _authService.authStateChanges.listen((firebaseUser) async {
       print('AuthNotifier: Firebase auth state changed - User: ${firebaseUser?.email ?? "null"}');
       
-      // Ignore if we're in the middle of an explicit auth operation
+      // Don't auto-update state during manual operations
       if (_isInitializing) {
-        print('AuthNotifier: Skipping - initialization in progress');
+        print('AuthNotifier: Skipping auto-update during manual operation');
         return;
       }
       
-      if (firebaseUser == null) {
-        // User signed out
+      // Only auto-update to unauthenticated when user signs out
+      if (firebaseUser == null && value.status != AuthStatus.initial) {
         print('AuthNotifier: User signed out');
         value = AuthState.unauthenticated();
-      } else {
-        // Firebase user exists but don't auto-load profile
-        // Let the router handle initial auth check
-        print('AuthNotifier: Firebase user exists, waiting for explicit action');
-        // Stay in initial state - don't auto-authenticate
-        if (value.status == AuthStatus.initial) {
-          // Don't change state, let router handle it
-        }
       }
     });
   }
 
   /// Check if user is authenticated and load profile
-  /// This is called by the router on app startup
   Future<void> checkAuthStatus() async {
     if (_authService.currentUser == null) {
       print('AuthNotifier: No Firebase user, setting unauthenticated');
@@ -82,7 +73,7 @@ class AuthNotifier extends ValueNotifier<AuthState> {
         password: password,
       );
 
-      // Step 2: Register user profile in backend (with retry)
+      // Step 2: Register user profile in backend
       print('AuthNotifier: Step 2 - Registering user profile');
       UserModel? user;
       int retries = 3;
@@ -95,7 +86,7 @@ class AuthNotifier extends ValueNotifier<AuthState> {
             email: email,
             bio: bio,
           );
-          break; // Success, exit loop
+          break; // Success
         } catch (e) {
           lastError = e as Exception;
           print('AuthNotifier: Profile registration attempt ${i + 1} failed: $e');
@@ -110,11 +101,15 @@ class AuthNotifier extends ValueNotifier<AuthState> {
         value = AuthState.authenticated(user);
       } else {
         print('AuthNotifier: ✗ Failed to register profile after $retries attempts');
-        throw lastError ?? Exception('Failed to register user profile');
+        // Clean up Firebase user if backend registration fails
+        await _authService.signOut();
+        throw lastError ?? Exception('Failed to complete registration. Please try again.');
       }
     } catch (e) {
       print('AuthNotifier: ✗ Sign up error: $e');
-      value = AuthState.error(e.toString());
+      // Set error state with user-friendly message
+      String errorMessage = _getErrorMessage(e);
+      value = AuthState.error(errorMessage);
       rethrow;
     } finally {
       _isInitializing = false;
@@ -137,7 +132,7 @@ class AuthNotifier extends ValueNotifier<AuthState> {
         password: password,
       );
 
-      // Step 2: Get user profile from backend (with retry)
+      // Step 2: Get user profile from backend
       print('AuthNotifier: Step 2 - Fetching user profile');
       UserModel? user;
       int retries = 3;
@@ -146,10 +141,19 @@ class AuthNotifier extends ValueNotifier<AuthState> {
       for (int i = 0; i < retries; i++) {
         try {
           user = await _authService.getUserProfile();
-          break; // Success, exit loop
+          break; // Success
         } catch (e) {
           lastError = e as Exception;
           print('AuthNotifier: Profile fetch attempt ${i + 1} failed: $e');
+          
+          // Check if this is a "profile not found" error
+          if (e.toString().contains('not found')) {
+            print('AuthNotifier: User exists in Firebase but not in backend');
+            // This user exists in Firebase but not in backend
+            // Could happen if registration failed previously
+            break;
+          }
+          
           if (i < retries - 1) {
             await Future.delayed(Duration(milliseconds: 500 * (i + 1)));
           }
@@ -160,13 +164,16 @@ class AuthNotifier extends ValueNotifier<AuthState> {
         print('AuthNotifier: ✓ Sign in complete');
         value = AuthState.authenticated(user);
       } else {
-        print('AuthNotifier: ✗ Failed to fetch profile after $retries attempts');
-        // Firebase auth succeeded but profile fetch failed
-        throw lastError ?? Exception('Unable to load profile. Please check your connection.');
+        print('AuthNotifier: ✗ Profile not found or failed to load');
+        // Sign out from Firebase since backend profile doesn't exist
+        await _authService.signOut();
+        throw Exception('Account setup incomplete. Please contact support or create a new account.');
       }
     } catch (e) {
       print('AuthNotifier: ✗ Sign in error: $e');
-      value = AuthState.error(e.toString());
+      // Set error state with user-friendly message
+      String errorMessage = _getErrorMessage(e);
+      value = AuthState.error(errorMessage);
       rethrow;
     } finally {
       _isInitializing = false;
@@ -189,7 +196,8 @@ class AuthNotifier extends ValueNotifier<AuthState> {
       value = AuthState.authenticated(updatedUser);
     } catch (e) {
       print('AuthNotifier: ✗ Update profile error: $e');
-      value = AuthState.error(e.toString());
+      String errorMessage = _getErrorMessage(e);
+      value = AuthState.error(errorMessage);
       rethrow;
     }
   }
@@ -208,13 +216,17 @@ class AuthNotifier extends ValueNotifier<AuthState> {
   Future<void> signOut() async {
     try {
       print('AuthNotifier: Signing out...');
+      _isInitializing = true;
       await _authService.signOut();
       value = AuthState.unauthenticated();
       print('AuthNotifier: ✓ Signed out');
     } catch (e) {
       print('AuthNotifier: ✗ Sign out error: $e');
-      value = AuthState.error(e.toString());
+      String errorMessage = _getErrorMessage(e);
+      value = AuthState.error(errorMessage);
       rethrow;
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -227,12 +239,46 @@ class AuthNotifier extends ValueNotifier<AuthState> {
       print('AuthNotifier: ✓ Account deleted');
     } catch (e) {
       print('AuthNotifier: ✗ Delete account error: $e');
-      value = AuthState.error(e.toString());
+      String errorMessage = _getErrorMessage(e);
+      value = AuthState.error(errorMessage);
       rethrow;
     }
   }
 
-  UserModel? get currentUser => value.user;
+  /// Clear error state
+  void clearError() {
+    if (value.status == AuthStatus.error) {
+      value = AuthState.unauthenticated();
+    }
+  }
 
+  /// Convert exceptions to user-friendly messages
+  String _getErrorMessage(dynamic error) {
+    String errorString = error.toString();
+    
+    if (errorString.contains('email-already-in-use')) {
+      return 'This email is already registered. Please sign in instead.';
+    } else if (errorString.contains('user-not-found')) {
+      return 'No account found with this email. Please sign up first.';
+    } else if (errorString.contains('wrong-password')) {
+      return 'Incorrect password. Please try again.';
+    } else if (errorString.contains('invalid-email')) {
+      return 'Invalid email address. Please check and try again.';
+    } else if (errorString.contains('weak-password')) {
+      return 'Password is too weak. Please use at least 6 characters.';
+    } else if (errorString.contains('too-many-requests')) {
+      return 'Too many failed attempts. Please try again later.';
+    } else if (errorString.contains('network')) {
+      return 'Network error. Please check your internet connection.';
+    } else if (errorString.contains('not found')) {
+      return 'Account not found. Please check your credentials.';
+    } else if (errorString.contains('incomplete')) {
+      return errorString.replaceAll('Exception: ', '');
+    } else {
+      return 'An error occurred. Please try again.';
+    }
+  }
+
+  UserModel? get currentUser => value.user;
   bool get isAuthenticated => value.isAuthenticated;
 }
