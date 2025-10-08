@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/routes.dart';
+import '../../../config/router_config.dart';
 import '../../../core/constants/strings.dart';
 import '../../../core/constants/dimensions.dart';
 import '../../../core/constants/colors.dart';
@@ -10,7 +11,6 @@ import '../../../core/utils/helpers.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../core/widgets/custom_textfield.dart';
-import '../services/auth_notifier.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -23,18 +23,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _emailFocusNode = FocusNode();
-  late final AuthNotifier _authNotifier;
   bool _isLoading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _authNotifier = AuthNotifier();
-  }
-
-  @override
   void dispose() {
-    _authNotifier.dispose();
     _emailController.dispose();
     _emailFocusNode.dispose();
     super.dispose();
@@ -46,7 +38,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = true);
 
     try {
-      await _authNotifier.sendPasswordReset(_emailController.text.trim());
+      await globalAuthNotifier.sendPasswordReset(_emailController.text.trim());
       
       if (mounted) {
         Helpers.showSnackBar(

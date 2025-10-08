@@ -28,38 +28,39 @@ class AuthNotifier extends ValueNotifier<AuthState> {
         // User signed out
         print('AuthNotifier: User signed out');
         value = AuthState.unauthenticated();
-      } else if (value.status == AuthStatus.initial) {
-        // Only auto-load profile on app startup
-        print('AuthNotifier: App startup - loading user profile');
-        await _loadUserProfile();
       } else {
-        print('AuthNotifier: Auth state changed but not handling (status: ${value.status})');
+        // Firebase user exists but don't auto-load profile
+        // Let the router handle initial auth check
+        print('AuthNotifier: Firebase user exists, waiting for explicit action');
+        // Stay in initial state - don't auto-authenticate
+        if (value.status == AuthStatus.initial) {
+          // Don't change state, let router handle it
+        }
       }
     });
   }
 
-  Future<void> _loadUserProfile() async {
+  /// Check if user is authenticated and load profile
+  /// This is called by the router on app startup
+  Future<void> checkAuthStatus() async {
+    if (_authService.currentUser == null) {
+      print('AuthNotifier: No Firebase user, setting unauthenticated');
+      value = AuthState.unauthenticated();
+      return;
+    }
+
     try {
-      print('AuthNotifier: Loading user profile...');
-      _isInitializing = true;
+      print('AuthNotifier: Checking auth status - loading profile...');
       value = AuthState.loading();
       
       final user = await _authService.getUserProfile();
-      print('AuthNotifier: ✓ User profile loaded');
+      print('AuthNotifier: ✓ Profile loaded, user authenticated');
       value = AuthState.authenticated(user);
     } catch (e) {
-      print('AuthNotifier: ✗ Error loading user profile: $e');
-      // Don't set error state on app startup if profile fetch fails
-      // User might still be authenticated in Firebase
-      if (_authService.currentUser != null) {
-        print('AuthNotifier: Firebase user exists, will retry...');
-        // Keep loading state instead of error
-        value = AuthState.loading();
-      } else {
-        value = AuthState.error(e.toString());
-      }
-    } finally {
-      _isInitializing = false;
+      print('AuthNotifier: ✗ Failed to load profile: $e');
+      // Profile fetch failed, sign out to force re-authentication
+      await _authService.signOut();
+      value = AuthState.unauthenticated();
     }
   }
 
@@ -161,7 +162,6 @@ class AuthNotifier extends ValueNotifier<AuthState> {
       } else {
         print('AuthNotifier: ✗ Failed to fetch profile after $retries attempts');
         // Firebase auth succeeded but profile fetch failed
-        // Don't throw - let user stay logged in, they can retry
         throw lastError ?? Exception('Unable to load profile. Please check your connection.');
       }
     } catch (e) {

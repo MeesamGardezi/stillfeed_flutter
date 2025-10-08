@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/routes.dart';
+import '../../../config/router_config.dart';
 import '../../../core/constants/strings.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/dimensions.dart';
 import '../../../core/utils/helpers.dart';
-import '../../auth/services/auth_notifier.dart';
 
 class SidebarNav extends StatelessWidget {
   final String currentPath;
@@ -235,9 +235,7 @@ class SidebarNav extends StatelessWidget {
             );
 
             if (confirm == true && context.mounted) {
-              final authNotifier = AuthNotifier();
-              await authNotifier.signOut();
-              authNotifier.dispose();
+              await globalAuthNotifier.signOut();
             }
           },
           icon: Icon(

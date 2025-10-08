@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/routes.dart';
+import '../../../config/router_config.dart';
 import '../../../core/constants/strings.dart';
 import '../../../core/constants/dimensions.dart';
 import '../../../core/constants/colors.dart';
@@ -11,7 +12,6 @@ import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/responsive_layout.dart';
 import '../../core/widgets/custom_textfield.dart';
 import '../models/auth_state.dart';
-import '../services/auth_notifier.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -26,20 +26,17 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
-  late final AuthNotifier _authNotifier;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _authNotifier = AuthNotifier();
-    _authNotifier.addListener(_onAuthStateChanged);
+    globalAuthNotifier.addListener(_onAuthStateChanged);
   }
 
   @override
   void dispose() {
-    _authNotifier.removeListener(_onAuthStateChanged);
-    _authNotifier.dispose();
+    globalAuthNotifier.removeListener(_onAuthStateChanged);
     _emailController.dispose();
     _passwordController.dispose();
     _emailFocusNode.dispose();
@@ -51,10 +48,10 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
 
     setState(() {
-      _isLoading = _authNotifier.value.status == AuthStatus.loading;
+      _isLoading = globalAuthNotifier.value.status == AuthStatus.loading;
     });
 
-    if (_authNotifier.value.status == AuthStatus.authenticated) {
+    if (globalAuthNotifier.value.status == AuthStatus.authenticated) {
       context.go(AppRoutes.feed);
     }
   }
@@ -63,7 +60,7 @@ class _LoginPageState extends State<LoginPage> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      await _authNotifier.signIn(
+      await globalAuthNotifier.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
