@@ -6,6 +6,7 @@ import '../auth/pages/signup_page.dart';
 import '../auth/services/auth_notifier.dart';
 import '../auth/models/auth_state.dart';
 import '../feed/pages/feed_page.dart';
+import '../feed/pages/upload_video_page.dart';
 import '../home/pages/main_layout_page.dart';
 import '../core/constants/colors.dart';
 import 'routes.dart';
@@ -125,6 +126,11 @@ class AppRouter {
               key: state.pageKey,
               child: const FollowingFeedPage(),
             ),
+          ),
+          GoRoute(
+            path: AppRoutes.uploadVideo,
+            name: AppRoutes.uploadVideoName,
+            builder: (context, state) => const UploadVideoPage(),
           ),
         ],
       ),
