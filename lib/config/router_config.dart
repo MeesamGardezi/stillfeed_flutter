@@ -7,8 +7,10 @@ import '../auth/services/auth_notifier.dart';
 import '../auth/models/auth_state.dart';
 import '../feed/pages/feed_page.dart';
 import '../feed/pages/upload_video_page.dart';
+import '../feed/pages/video_player_page.dart';
 import '../home/pages/main_layout_page.dart';
 import '../core/constants/colors.dart';
+import '../core/models/video_model.dart';
 import 'routes.dart';
 
 // Global auth notifier instance
@@ -20,25 +22,41 @@ class AppRouter {
     redirect: (context, state) async {
       final authState = globalAuthNotifier.value;
       final authStatus = authState.status;
-      final isAuthRoute =
-          state.matchedLocation == AppRoutes.login ||
-          state.matchedLocation == AppRoutes.signup ||
-          state.matchedLocation == AppRoutes.forgotPassword;
+      final location = state.matchedLocation;
+      
+      final isAuthRoute = location == AppRoutes.login ||
+          location == AppRoutes.signup ||
+          location == AppRoutes.forgotPassword;
+      
+      final isSplash = location == '/splash';
 
-      print('Router redirect - Location: ${state.matchedLocation}, Auth Status: $authStatus');
+      print('Router redirect - Location: $location, Auth Status: $authStatus');
 
       // Initial app load - check auth status
       if (authStatus == AuthStatus.initial) {
         print('Router: Initial state, checking auth...');
-        await globalAuthNotifier.checkAuthStatus();
-        final newStatus = globalAuthNotifier.value.status;
-        print('Router: Auth check complete, new status: $newStatus');
-        
-        if (newStatus == AuthStatus.authenticated && isAuthRoute) {
+        // Show splash while checking
+        if (!isSplash) {
+          return '/splash';
+        }
+        // Start auth check
+        globalAuthNotifier.checkAuthStatus().then((_) {
+          // Auth check complete, router will redirect again
+        });
+        return null; // Stay on splash
+      }
+
+      // If we're on splash and auth is determined, redirect appropriately
+      if (isSplash) {
+        if (authStatus == AuthStatus.authenticated) {
+          print('Router: Leaving splash, authenticated');
           return AppRoutes.feed;
-        } else if (newStatus == AuthStatus.unauthenticated && !isAuthRoute) {
+        } else if (authStatus == AuthStatus.unauthenticated || 
+                   authStatus == AuthStatus.error) {
+          print('Router: Leaving splash, not authenticated');
           return AppRoutes.login;
         }
+        // Still loading, stay on splash
         return null;
       }
 
@@ -46,12 +64,6 @@ class AppRouter {
       if (authStatus == AuthStatus.loading && isAuthRoute) {
         print('Router: Loading state on auth page, no redirect');
         return null;
-      }
-
-      // Show splash only for initial loading on non-auth pages
-      if (authStatus == AuthStatus.loading && !isAuthRoute) {
-        print('Router: Loading state on protected page, show splash');
-        return '/splash';
       }
 
       // Stay on auth page to show errors
@@ -109,6 +121,23 @@ class AppRouter {
         path: AppRoutes.uploadVideo,
         name: AppRoutes.uploadVideoName,
         builder: (context, state) => const UploadVideoPage(),
+      ),
+      // Video Player route - OUTSIDE ShellRoute for full screen
+      GoRoute(
+        path: AppRoutes.videoPlayer,
+        name: AppRoutes.videoPlayerName,
+        builder: (context, state) {
+          final video = state.extra as Video?;
+          if (video == null) {
+            // If no video provided, go back to feed
+            return const Scaffold(
+              body: Center(
+                child: Text('No video selected'),
+              ),
+            );
+          }
+          return VideoPlayerPage(video: video);
+        },
       ),
       // Protected routes with shell
       ShellRoute(
