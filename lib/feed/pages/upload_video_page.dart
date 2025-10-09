@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:dio/dio.dart';
-import 'package:http/http.dart' as http;
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../config/routes.dart';
 import '../../config/api_config.dart';
 import '../../core/constants/dimensions.dart';
@@ -31,6 +33,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   final _auth = FirebaseAuth.instance;
 
   File? _videoFile;
+  Uint8List? _videoBytes;
+  String? _videoFileName;
   VideoPlayerController? _videoController;
   VideoCategory _selectedCategory = VideoCategory.nature;
   
@@ -38,7 +42,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   String? _errorMessage;
-  int _videoDuration = 0; // in seconds
+  int _videoDuration = 0;
+  int _videoFileSize = 0;
 
   @override
   void dispose() {
@@ -50,20 +55,24 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
 
   Future<void> _pickVideo() async {
     try {
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
-
-      if (pickedFile == null) return;
-
       setState(() {
         _isProcessing = true;
         _errorMessage = null;
       });
 
-      final file = File(pickedFile.path);
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowMultiple: false,
+      );
 
-      // Validate file size (max 500MB)
-      final fileSize = await file.length();
+      if (result == null || result.files.isEmpty) {
+        setState(() => _isProcessing = false);
+        return;
+      }
+
+      final pickedFile = result.files.first;
+      
+      final fileSize = pickedFile.size;
       final fileSizeMB = fileSize / (1024 * 1024);
       
       if (fileSizeMB > 500) {
@@ -74,8 +83,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
         return;
       }
 
-      // Validate file format
-      final extension = pickedFile.path.split('.').last.toLowerCase();
+      final extension = pickedFile.extension?.toLowerCase() ?? '';
       if (!['mp4', 'mov', 'avi', 'webm'].contains(extension)) {
         setState(() {
           _errorMessage = 'Invalid video format. Allowed: MP4, MOV, AVI, WebM';
@@ -84,29 +92,61 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
         return;
       }
 
-      // Initialize video player to get duration
-      final controller = VideoPlayerController.file(file);
-      await controller.initialize();
-      
-      final durationInSeconds = controller.value.duration.inSeconds;
-      
-      // Validate minimum duration (3 minutes = 180 seconds)
-      if (durationInSeconds < 180) {
-        controller.dispose();
+      _videoFileName = pickedFile.name;
+      _videoFileSize = pickedFile.size;
+
+      if (kIsWeb) {
+        _videoBytes = pickedFile.bytes;
+        
+        if (_videoBytes == null) {
+          setState(() {
+            _errorMessage = 'Failed to read video file';
+            _isProcessing = false;
+          });
+          return;
+        }
+
+        final estimatedMinutes = (fileSizeMB / 8).ceil();
+        _videoDuration = estimatedMinutes * 60;
+        
+        if (estimatedMinutes < 3) {
+          setState(() {
+            _errorMessage = 'Video appears too short. Min 3 minutes required.';
+            _isProcessing = false;
+            _videoBytes = null;
+          });
+          return;
+        }
+
+        setState(() => _isProcessing = false);
+        
+      } else {
+        final file = File(pickedFile.path!);
+        _videoFile = file;
+        
+        final controller = VideoPlayerController.file(file);
+        await controller.initialize();
+        
+        final durationInSeconds = controller.value.duration.inSeconds;
+        
+        if (durationInSeconds < 180) {
+          controller.dispose();
+          setState(() {
+            _errorMessage = 'Video must be at least 3 minutes long';
+            _isProcessing = false;
+            _videoFile = null;
+          });
+          return;
+        }
+
         setState(() {
-          _errorMessage = 'Video must be at least 3 minutes long';
+          _videoController?.dispose();
+          _videoController = controller;
+          _videoDuration = durationInSeconds;
           _isProcessing = false;
         });
-        return;
       }
 
-      setState(() {
-        _videoFile = file;
-        _videoController?.dispose();
-        _videoController = controller;
-        _videoDuration = durationInSeconds;
-        _isProcessing = false;
-      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load video: ${e.toString()}';
@@ -116,7 +156,17 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   }
 
   Future<void> _handleUpload() async {
-    if (!_formKey.currentState!.validate() || _videoFile == null) {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    
+    if (kIsWeb && _videoBytes == null) {
+      setState(() => _errorMessage = 'Please select a video first');
+      return;
+    }
+    
+    if (!kIsWeb && _videoFile == null) {
+      setState(() => _errorMessage = 'Please select a video first');
       return;
     }
 
@@ -126,26 +176,57 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
       _errorMessage = null;
     });
 
+    String? videoUrl;
+    String? storagePath;
+
     try {
-      // Step 1: Get upload URL from backend
+      // Step 1: Generate storage path and video ID
+      final userId = _auth.currentUser!.uid;
+      final videoId = DateTime.now().millisecondsSinceEpoch.toString();
+      final extension = _videoFileName!.split('.').last;
+      storagePath = 'videos/$userId/$videoId.$extension';
+
       setState(() => _uploadProgress = 0.1);
-      final uploadUrlResponse = await _getUploadUrl();
-      if (uploadUrlResponse == null) {
-        throw Exception('Failed to get upload URL');
+
+      // Step 2: Upload to Firebase Storage
+      print('Uploading to Firebase Storage: $storagePath');
+      final storageRef = FirebaseStorage.instance.ref().child(storagePath);
+
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        uploadTask = storageRef.putData(
+          _videoBytes!,
+          SettableMetadata(contentType: _getContentType()),
+        );
+      } else {
+        uploadTask = storageRef.putFile(
+          _videoFile!,
+          SettableMetadata(contentType: _getContentType()),
+        );
       }
 
-      final uploadUrl = uploadUrlResponse['uploadUrl'] as String;
-      final videoId = uploadUrlResponse['videoId'] as String;
-      final storagePath = uploadUrlResponse['storagePath'] as String;
+      // Listen to progress
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        setState(() {
+          _uploadProgress = 0.1 + (progress * 0.7); // 10% to 80%
+        });
+      });
 
-      // Step 2: Upload video to Firebase Storage
-      setState(() => _uploadProgress = 0.2);
-      await _uploadVideoToStorage(uploadUrl);
+      // Wait for upload
+      final snapshot = await uploadTask;
+      print('Upload complete! Getting download URL...');
 
-      // Step 3: Create video metadata
-      setState(() => _uploadProgress = 0.9);
+      // Step 3: Get download URL
+      videoUrl = await snapshot.ref.getDownloadURL();
+      print('Download URL: $videoUrl');
+
+      setState(() => _uploadProgress = 0.85);
+
+      // Step 4: Create metadata in backend
+      print('Creating metadata in backend...');
       await _createVideoMetadata(
-        videoId: videoId,
+        videoUrl: videoUrl,
         storagePath: storagePath,
       );
 
@@ -156,6 +237,17 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
         context.go(AppRoutes.feed);
       }
     } catch (e) {
+      print('Upload failed: $e');
+      
+      // Clean up on error - delete the uploaded file if it exists
+      if (storagePath != null) {
+        try {
+          await FirebaseStorage.instance.ref().child(storagePath).delete();
+        } catch (deleteError) {
+          print('Could not delete file: $deleteError');
+        }
+      }
+      
       setState(() {
         _errorMessage = 'Upload failed: ${e.toString()}';
         _isUploading = false;
@@ -164,82 +256,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
     }
   }
 
-  Future<Map<String, dynamic>?> _getUploadUrl() async {
-    try {
-      final fileName = _videoFile!.path.split('/').last;
-      final fileSize = await _videoFile!.length();
-      final extension = fileName.split('.').last;
-      
-      String mimeType;
-      switch (extension.toLowerCase()) {
-        case 'mp4':
-          mimeType = 'video/mp4';
-          break;
-        case 'mov':
-          mimeType = 'video/quicktime';
-          break;
-        case 'avi':
-          mimeType = 'video/x-msvideo';
-          break;
-        case 'webm':
-          mimeType = 'video/webm';
-          break;
-        default:
-          mimeType = 'video/mp4';
-      }
-
-      final token = await _auth.currentUser?.getIdToken();
-      
-      final response = await _dio.post(
-        '${ApiConfig.baseUrl}${ApiConfig.uploadUrl}',
-        data: {
-          'fileName': fileName,
-          'fileSize': fileSize,
-          'mimeType': mimeType,
-        },
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-        ),
-      );
-
-      if (response.statusCode == 200) {
-        return response.data['data'] as Map<String, dynamic>;
-      }
-      return null;
-    } catch (e) {
-      print('Failed to get upload URL: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _uploadVideoToStorage(String uploadUrl) async {
-    try {
-      final bytes = await _videoFile!.readAsBytes();
-      
-      final response = await http.put(
-        Uri.parse(uploadUrl),
-        body: bytes,
-        headers: {
-          'Content-Type': _getContentType(),
-        },
-      );
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to upload video: ${response.statusCode}');
-      }
-
-      setState(() => _uploadProgress = 0.8);
-    } catch (e) {
-      print('Video upload error: $e');
-      rethrow;
-    }
-  }
-
   String _getContentType() {
-    final extension = _videoFile!.path.split('.').last.toLowerCase();
+    final extension = (_videoFileName ?? 'video.mp4').split('.').last.toLowerCase();
     switch (extension) {
       case 'mp4':
         return 'video/mp4';
@@ -255,7 +273,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   }
 
   Future<void> _createVideoMetadata({
-    required String videoId,
+    required String videoUrl,
     required String storagePath,
   }) async {
     try {
@@ -264,10 +282,10 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
       final response = await _dio.post(
         '${ApiConfig.baseUrl}${ApiConfig.videos}',
         data: {
-          'videoId': videoId,
           'title': _titleController.text.trim(),
           'description': _descriptionController.text.trim(),
           'category': _selectedCategory.name,
+          'videoUrl': videoUrl,
           'storagePath': storagePath,
           'duration': _videoDuration,
         },
@@ -282,6 +300,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
       if (response.statusCode != 201 && response.statusCode != 200) {
         throw Exception('Failed to create video metadata');
       }
+      
+      print('Metadata created successfully');
     } catch (e) {
       print('Create metadata error: $e');
       rethrow;
@@ -309,9 +329,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
             color: AppColors.textPrimary,
             size: AppDimensions.iconMedium,
           ),
-          onPressed: _isUploading
-              ? null
-              : () => context.pop(),
+          onPressed: _isUploading ? null : () => context.pop(),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -336,9 +354,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(
-            color: AppColors.accentGreen,
-          ),
+          CircularProgressIndicator(color: AppColors.accentGreen),
           const SizedBox(height: AppDimensions.paddingLarge),
           Text(
             'Processing video...',
@@ -442,6 +458,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   }
 
   Widget _buildForm() {
+    final hasVideo = kIsWeb ? _videoBytes != null : _videoFile != null;
+    
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.paddingLarge),
@@ -481,16 +499,13 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                 const SizedBox(height: AppDimensions.paddingMedium),
               ],
               
-              // Video selection
-              if (_videoFile == null)
+              if (!hasVideo)
                 _buildVideoSelector()
               else
-                _buildVideoPreview(),
+                _buildVideoInfo(),
 
-              if (_videoFile != null) ...[
+              if (hasVideo) ...[
                 const SizedBox(height: AppDimensions.paddingLarge),
-
-                // Title
                 CustomTextField(
                   label: 'Video Title',
                   controller: _titleController,
@@ -499,8 +514,6 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                   maxLength: 60,
                 ),
                 const SizedBox(height: AppDimensions.paddingMedium),
-
-                // Description
                 CustomTextField(
                   label: 'Description',
                   controller: _descriptionController,
@@ -510,13 +523,8 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                   maxLength: 500,
                 ),
                 const SizedBox(height: AppDimensions.paddingMedium),
-
-                // Category selector
                 _buildCategorySelector(),
-
                 const SizedBox(height: AppDimensions.paddingLarge),
-
-                // Upload button
                 CustomButton(
                   text: 'Upload Video',
                   onPressed: _handleUpload,
@@ -539,11 +547,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
         decoration: BoxDecoration(
           color: AppColors.backgroundPrimary,
           borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
-          border: Border.all(
-            color: AppColors.borderMedium,
-            width: 2,
-            style: BorderStyle.solid,
-          ),
+          border: Border.all(color: AppColors.borderMedium, width: 2),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -587,20 +591,17 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
     );
   }
 
-  Widget _buildVideoPreview() {
+  Widget _buildVideoInfo() {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.backgroundPrimary,
         borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
-        border: Border.all(
-          color: AppColors.borderLight,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderLight, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_videoController != null && _videoController!.value.isInitialized)
+          if (!kIsWeb && _videoController != null && _videoController!.value.isInitialized)
             ClipRRect(
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(AppDimensions.radiusLarge),
@@ -619,20 +620,16 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          _videoController!.value.isPlaying
-                              ? Icons.pause
-                              : Icons.play_arrow,
+                          _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
                           color: Colors.white,
                           size: AppDimensions.iconLarge,
                         ),
                       ),
                       onPressed: () {
                         setState(() {
-                          if (_videoController!.value.isPlaying) {
-                            _videoController!.pause();
-                          } else {
-                            _videoController!.play();
-                          }
+                          _videoController!.value.isPlaying 
+                            ? _videoController!.pause() 
+                            : _videoController!.play();
                         });
                       },
                     ),
@@ -640,6 +637,38 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                 ),
               ),
             ),
+          
+          if (kIsWeb)
+            Container(
+              height: 160,
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSecondary,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(AppDimensions.radiusLarge),
+                ),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.video_file,
+                      size: 48,
+                      color: AppColors.accentGreen.withOpacity(0.5),
+                    ),
+                    const SizedBox(height: AppDimensions.paddingSmall),
+                    Text(
+                      'Video Selected',
+                      style: TextStyle(
+                        fontSize: AppDimensions.fontMedium,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
           Padding(
             padding: const EdgeInsets.all(AppDimensions.paddingMedium),
             child: Row(
@@ -649,7 +678,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _videoFile!.path.split('/').last,
+                        _videoFileName ?? 'video.mp4',
                         style: TextStyle(
                           fontSize: AppDimensions.fontMedium,
                           fontWeight: FontWeight.w500,
@@ -660,7 +689,7 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${_formatDuration(_videoDuration)} • ${_formatFileSize(_videoFile!.lengthSync())}',
+                        '${_formatDuration(_videoDuration)} • ${_formatFileSize(_videoFileSize)}',
                         style: TextStyle(
                           fontSize: AppDimensions.fontSmall,
                           color: AppColors.textSecondary,
@@ -680,7 +709,10 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
                       _videoController?.dispose();
                       _videoController = null;
                       _videoFile = null;
+                      _videoBytes = null;
+                      _videoFileName = null;
                       _videoDuration = 0;
+                      _videoFileSize = 0;
                       _errorMessage = null;
                     });
                   },
@@ -714,25 +746,17 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
             return FilterChip(
               label: Text(category.displayName),
               selected: isSelected,
-              onSelected: (selected) {
-                setState(() {
-                  _selectedCategory = category;
-                });
-              },
+              onSelected: (selected) => setState(() => _selectedCategory = category),
               backgroundColor: AppColors.backgroundPrimary,
               selectedColor: AppColors.accentGreen.withOpacity(0.1),
               checkmarkColor: AppColors.accentGreen,
               labelStyle: TextStyle(
-                color: isSelected
-                    ? AppColors.accentGreen
-                    : AppColors.textSecondary,
+                color: isSelected ? AppColors.accentGreen : AppColors.textSecondary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 fontSize: AppDimensions.fontSmall,
               ),
               side: BorderSide(
-                color: isSelected
-                    ? AppColors.accentGreen
-                    : AppColors.borderLight,
+                color: isSelected ? AppColors.accentGreen : AppColors.borderLight,
               ),
             );
           }).toList(),
@@ -742,14 +766,12 @@ class _UploadVideoPageState extends State<UploadVideoPage> {
   }
 
   String _formatDuration(int seconds) {
-    final duration = Duration(seconds: seconds);
-    final minutes = duration.inMinutes;
-    final remainingSeconds = seconds % 60;
-    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
   }
 
   String _formatFileSize(int bytes) {
-    final mb = bytes / (1024 * 1024);
-    return '${mb.toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 }

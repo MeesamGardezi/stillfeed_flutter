@@ -104,6 +104,12 @@ class AppRouter {
         name: AppRoutes.forgotPasswordName,
         builder: (context, state) => const ForgotPasswordPage(),
       ),
+      // Upload route - OUTSIDE ShellRoute so it can be pushed as modal
+      GoRoute(
+        path: AppRoutes.uploadVideo,
+        name: AppRoutes.uploadVideoName,
+        builder: (context, state) => const UploadVideoPage(),
+      ),
       // Protected routes with shell
       ShellRoute(
         builder: (context, state, child) {
@@ -126,11 +132,6 @@ class AppRouter {
               key: state.pageKey,
               child: const FollowingFeedPage(),
             ),
-          ),
-          GoRoute(
-            path: AppRoutes.uploadVideo,
-            name: AppRoutes.uploadVideoName,
-            builder: (context, state) => const UploadVideoPage(),
           ),
         ],
       ),
