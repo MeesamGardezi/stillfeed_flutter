@@ -10,7 +10,7 @@ class AppRoutes {
   static const String categoryFeed = '/category/:category';
 
   // Video Routes
-  static const String videoPlayer = '/video/:videoId';
+  static const String videoPlayer = '/video-player';
   static const String uploadVideo = '/upload';
   static const String videoDetails = '/video/:videoId/details';
 

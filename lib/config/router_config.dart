@@ -122,16 +122,23 @@ class AppRouter {
         name: AppRoutes.uploadVideoName,
         builder: (context, state) => const UploadVideoPage(),
       ),
-      // Video Player route - OUTSIDE ShellRoute for full screen
+      // Video Player route - FIXED - No path parameter, just uses extra
       GoRoute(
-        path: AppRoutes.videoPlayer,
+        path: '/video-player',
         name: AppRoutes.videoPlayerName,
         builder: (context, state) {
           final video = state.extra as Video?;
           if (video == null) {
-            // If no video provided, go back to feed
-            return const Scaffold(
-              body: Center(
+            // If no video provided, show error
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Error'),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.go(AppRoutes.feed),
+                ),
+              ),
+              body: const Center(
                 child: Text('No video selected'),
               ),
             );

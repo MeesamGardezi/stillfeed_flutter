@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../../core/constants/colors.dart';
-import '../../../core/constants/dimensions.dart';
+import 'package:go_router/go_router.dart';
+import '../../config/routes.dart';
+import '../../core/constants/colors.dart';
+import '../../core/constants/dimensions.dart';
 import '../../core/models/video_model.dart';
 import '../../core/services/video_service.dart';
+import '../../core/utils/formatters.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -119,11 +122,7 @@ class _FeedPageState extends State<FeedPage> {
         valueListenable: _isLoadingNotifier,
         builder: (context, isLoading, child) {
           if (isLoading && _videosNotifier.value.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.accentGreen,
-              ),
-            );
+            return _buildLoadingState();
           }
 
           return ValueListenableBuilder<String?>(
@@ -146,21 +145,21 @@ class _FeedPageState extends State<FeedPage> {
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.paddingMedium,
+                        vertical: AppDimensions.paddingSmall,
                       ),
                       itemCount: videos.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index == videos.length) {
                           return const Center(
                             child: Padding(
-                              padding: EdgeInsets.all(AppDimensions.paddingMedium),
+                              padding: EdgeInsets.all(AppDimensions.paddingLarge),
                               child: CircularProgressIndicator(
                                 color: AppColors.accentGreen,
                               ),
                             ),
                           );
                         }
-                        return VideoCard(video: videos[index]);
+                        return YouTubeStyleVideoCard(video: videos[index]);
                       },
                     ),
                   );
@@ -173,6 +172,14 @@ class _FeedPageState extends State<FeedPage> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingSmall),
+      itemCount: 5,
+      itemBuilder: (context, index) => const VideoCardSkeleton(),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -181,14 +188,14 @@ class _FeedPageState extends State<FeedPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(AppDimensions.paddingLarge),
+              padding: const EdgeInsets.all(AppDimensions.paddingXLarge),
               decoration: BoxDecoration(
                 color: AppColors.accentGreen.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.video_library_outlined,
-                size: 48,
+                size: 56,
                 color: AppColors.accentGreen.withOpacity(0.7),
               ),
             ),
@@ -225,8 +232,8 @@ class _FeedPageState extends State<FeedPage> {
           children: [
             Icon(
               Icons.error_outline,
-              size: 48,
-              color: AppColors.textSecondary,
+              size: 56,
+              color: AppColors.error,
             ),
             const SizedBox(height: AppDimensions.paddingMedium),
             Text(
@@ -251,13 +258,13 @@ class _FeedPageState extends State<FeedPage> {
               onPressed: () => _loadVideos(refresh: true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accentGreen,
-                foregroundColor: AppColors.backgroundPrimary,
+                foregroundColor: AppColors.textOnAccent,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.paddingLarge,
+                  horizontal: AppDimensions.paddingXLarge,
                   vertical: AppDimensions.paddingMedium,
                 ),
               ),
-              child: const Text('Retry'),
+              child: const Text('Try Again'),
             ),
           ],
         ),
@@ -385,11 +392,7 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
         valueListenable: _isLoadingNotifier,
         builder: (context, isLoading, child) {
           if (isLoading && _videosNotifier.value.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.accentGreen,
-              ),
-            );
+            return _buildLoadingState();
           }
 
           return ValueListenableBuilder<String?>(
@@ -412,21 +415,21 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.paddingMedium,
+                        vertical: AppDimensions.paddingSmall,
                       ),
                       itemCount: videos.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index == videos.length) {
                           return const Center(
                             child: Padding(
-                              padding: EdgeInsets.all(AppDimensions.paddingMedium),
+                              padding: EdgeInsets.all(AppDimensions.paddingLarge),
                               child: CircularProgressIndicator(
                                 color: AppColors.accentGreen,
                               ),
                             ),
                           );
                         }
-                        return VideoCard(video: videos[index]);
+                        return YouTubeStyleVideoCard(video: videos[index]);
                       },
                     ),
                   );
@@ -439,6 +442,14 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingSmall),
+      itemCount: 5,
+      itemBuilder: (context, index) => const VideoCardSkeleton(),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -447,14 +458,14 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(AppDimensions.paddingLarge),
+              padding: const EdgeInsets.all(AppDimensions.paddingXLarge),
               decoration: BoxDecoration(
                 color: AppColors.accentGreen.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.people_outline,
-                size: 48,
+                size: 56,
                 color: AppColors.accentGreen.withOpacity(0.7),
               ),
             ),
@@ -491,8 +502,8 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
           children: [
             Icon(
               Icons.error_outline,
-              size: 48,
-              color: AppColors.textSecondary,
+              size: 56,
+              color: AppColors.error,
             ),
             const SizedBox(height: AppDimensions.paddingMedium),
             Text(
@@ -517,16 +528,392 @@ class _FollowingFeedPageState extends State<FollowingFeedPage> {
               onPressed: () => _loadVideos(refresh: true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accentGreen,
-                foregroundColor: AppColors.backgroundPrimary,
+                foregroundColor: AppColors.textOnAccent,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.paddingLarge,
+                  horizontal: AppDimensions.paddingXLarge,
                   vertical: AppDimensions.paddingMedium,
                 ),
               ),
-              child: const Text('Retry'),
+              child: const Text('Try Again'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// YOUTUBE-STYLE VIDEO CARD
+// ============================================================================
+
+class YouTubeStyleVideoCard extends StatelessWidget {
+  final Video video;
+
+  const YouTubeStyleVideoCard({super.key, required this.video});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        // FIXED: Use GoRouter navigation with extra parameter
+        context.push(AppRoutes.videoPlayer, extra: video);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppDimensions.paddingMedium),
+        color: AppColors.backgroundPrimary,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail with duration badge
+            _buildThumbnail(),
+            // Video info
+            Padding(
+              padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Profile picture
+                  _buildProfilePicture(context),
+                  const SizedBox(width: AppDimensions.paddingMedium),
+                  // Video details
+                  Expanded(
+                    child: _buildVideoDetails(),
+                  ),
+                  // More options button
+                  _buildMoreButton(context),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnail() {
+    return Stack(
+      children: [
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: video.thumbnailUrl.isNotEmpty
+              ? Image.network(
+                  video.thumbnailUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: AppColors.backgroundSecondary,
+                      child: Center(
+                        child: Icon(
+                          Icons.video_library_outlined,
+                          size: 48,
+                          color: AppColors.textSecondary.withOpacity(0.5),
+                        ),
+                      ),
+                    );
+                  },
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      color: AppColors.backgroundSecondary,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                          strokeWidth: 2,
+                          color: AppColors.accentGreen,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : Container(
+                  color: AppColors.backgroundSecondary,
+                  child: Center(
+                    child: Icon(
+                      Icons.video_library_outlined,
+                      size: 48,
+                      color: AppColors.textSecondary.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+        ),
+        // Duration badge
+        if (video.duration > 0)
+          Positioned(
+            right: 8,
+            bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 2,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                Formatters.formatSeconds(video.duration),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildProfilePicture(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        // Navigate to uploader's profile
+        // context.push('${AppRoutes.otherProfile}/${video.uploaderId}');
+      },
+      child: CircleAvatar(
+        radius: 18,
+        backgroundColor: AppColors.accentGreen.withOpacity(0.1),
+        backgroundImage: video.uploaderProfilePic.isNotEmpty
+            ? NetworkImage(video.uploaderProfilePic)
+            : null,
+        child: video.uploaderProfilePic.isEmpty
+            ? Text(
+                video.uploaderName.isNotEmpty
+                    ? video.uploaderName[0].toUpperCase()
+                    : '?',
+                style: TextStyle(
+                  color: AppColors.accentGreen,
+                  fontWeight: FontWeight.w600,
+                  fontSize: AppDimensions.fontSmall,
+                ),
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildVideoDetails() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Title
+        Text(
+          video.title,
+          style: TextStyle(
+            fontSize: AppDimensions.fontMedium,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+            height: 1.3,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        // Uploader and metadata
+        Text(
+          video.uploaderName,
+          style: TextStyle(
+            fontSize: AppDimensions.fontSmall,
+            color: AppColors.textSecondary,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        // Views and time
+        Text(
+          '${_formatViews(video.viewCount)} views • ${Formatters.formatTimeAgo(video.createdAt)}',
+          style: TextStyle(
+            fontSize: AppDimensions.fontSmall,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMoreButton(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        Icons.more_vert,
+        size: AppDimensions.iconMedium,
+        color: AppColors.textSecondary,
+      ),
+      onPressed: () {
+        _showVideoOptions(context);
+      },
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  void _showVideoOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.backgroundPrimary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.radiusLarge),
+        ),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.borderMedium,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                video.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                color: AppColors.textPrimary,
+              ),
+              title: Text(
+                video.isSaved ? 'Remove from saved' : 'Save video',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: AppDimensions.fontMedium,
+                ),
+              ),
+              onTap: () {
+                // TODO: Implement save/unsave
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.share,
+                color: AppColors.textPrimary,
+              ),
+              title: Text(
+                'Share',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: AppDimensions.fontMedium,
+                ),
+              ),
+              onTap: () {
+                // TODO: Implement share
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.report_outlined,
+                color: AppColors.error,
+              ),
+              title: Text(
+                'Report',
+                style: TextStyle(
+                  color: AppColors.error,
+                  fontSize: AppDimensions.fontMedium,
+                ),
+              ),
+              onTap: () {
+                // TODO: Implement report
+                Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatViews(int views) {
+    if (views >= 1000000) {
+      return '${(views / 1000000).toStringAsFixed(1)}M';
+    } else if (views >= 1000) {
+      return '${(views / 1000).toStringAsFixed(1)}K';
+    }
+    return views.toString();
+  }
+}
+
+// ============================================================================
+// VIDEO CARD SKELETON (Loading state)
+// ============================================================================
+
+class VideoCardSkeleton extends StatelessWidget {
+  const VideoCardSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppDimensions.paddingMedium),
+      color: AppColors.backgroundPrimary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Thumbnail skeleton
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: Container(
+              color: AppColors.backgroundSecondary,
+            ),
+          ),
+          // Info skeleton
+          Padding(
+            padding: const EdgeInsets.all(AppDimensions.paddingMedium),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Profile picture skeleton
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: AppColors.backgroundSecondary,
+                ),
+                const SizedBox(width: AppDimensions.paddingMedium),
+                // Details skeleton
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        height: 10,
+                        width: 150,
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        height: 10,
+                        width: 200,
+                        decoration: BoxDecoration(
+                          color: AppColors.backgroundSecondary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -657,11 +1044,7 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
         valueListenable: _isLoadingNotifier,
         builder: (context, isLoading, child) {
           if (isLoading && _videosNotifier.value.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.accentGreen,
-              ),
-            );
+            return _buildLoadingState();
           }
 
           return ValueListenableBuilder<String?>(
@@ -684,21 +1067,21 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
                     child: ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.paddingMedium,
+                        vertical: AppDimensions.paddingSmall,
                       ),
                       itemCount: videos.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index == videos.length) {
                           return const Center(
                             child: Padding(
-                              padding: EdgeInsets.all(AppDimensions.paddingMedium),
+                              padding: EdgeInsets.all(AppDimensions.paddingLarge),
                               child: CircularProgressIndicator(
                                 color: AppColors.accentGreen,
                               ),
                             ),
                           );
                         }
-                        return VideoCard(video: videos[index]);
+                        return YouTubeStyleVideoCard(video: videos[index]);
                       },
                     ),
                   );
@@ -711,6 +1094,14 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingSmall),
+      itemCount: 5,
+      itemBuilder: (context, index) => const VideoCardSkeleton(),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -719,14 +1110,14 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(AppDimensions.paddingLarge),
+              padding: const EdgeInsets.all(AppDimensions.paddingXLarge),
               decoration: BoxDecoration(
                 color: AppColors.accentGreen.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.category_outlined,
-                size: 48,
+                size: 56,
                 color: AppColors.accentGreen.withOpacity(0.7),
               ),
             ),
@@ -763,8 +1154,8 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
           children: [
             Icon(
               Icons.error_outline,
-              size: 48,
-              color: AppColors.textSecondary,
+              size: 56,
+              color: AppColors.error,
             ),
             const SizedBox(height: AppDimensions.paddingMedium),
             Text(
@@ -789,185 +1180,17 @@ class _CategoryFeedPageState extends State<CategoryFeedPage> {
               onPressed: () => _loadVideos(refresh: true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accentGreen,
-                foregroundColor: AppColors.backgroundPrimary,
+                foregroundColor: AppColors.textOnAccent,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.paddingLarge,
+                  horizontal: AppDimensions.paddingXLarge,
                   vertical: AppDimensions.paddingMedium,
                 ),
               ),
-              child: const Text('Retry'),
+              child: const Text('Try Again'),
             ),
           ],
         ),
       ),
     );
-  }
-}
-
-// ============================================================================
-// VIDEO CARD WIDGET
-// ============================================================================
-
-class VideoCard extends StatelessWidget {
-  final Video video;
-
-  const VideoCard({super.key, required this.video});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        // Navigate to video player
-        Navigator.pushNamed(
-          context,
-          '/video-player',
-          arguments: video,
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.paddingMedium,
-          vertical: AppDimensions.paddingSmall,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundPrimary,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusMedium),
-          border: Border.all(
-            color: AppColors.borderLight,
-            width: 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Thumbnail
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(AppDimensions.radiusMedium),
-              ),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: video.thumbnailUrl.isNotEmpty
-                    ? Image.network(
-                        video.thumbnailUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: AppColors.backgroundSecondary,
-                            child: const Icon(
-                              Icons.video_library_outlined,
-                              size: 48,
-                              color: AppColors.textSecondary,
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        color: AppColors.backgroundSecondary,
-                        child: const Icon(
-                          Icons.video_library_outlined,
-                          size: 48,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-              ),
-            ),
-            // Video info
-            Padding(
-              padding: const EdgeInsets.all(AppDimensions.paddingMedium),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title
-                  Text(
-                    video.title,
-                    style: TextStyle(
-                      fontSize: AppDimensions.fontMedium,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (video.description.isNotEmpty) ...[
-                    const SizedBox(height: AppDimensions.paddingSmall),
-                    Text(
-                      video.description,
-                      style: TextStyle(
-                        fontSize: AppDimensions.fontSmall,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  const SizedBox(height: AppDimensions.paddingMedium),
-                  // Uploader info and stats
-                  Row(
-                    children: [
-                      // Profile picture
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppColors.accentGreen.withOpacity(0.1),
-                        backgroundImage: video.uploaderProfilePic.isNotEmpty
-                            ? NetworkImage(video.uploaderProfilePic)
-                            : null,
-                        child: video.uploaderProfilePic.isEmpty
-                            ? Text(
-                                video.uploaderName.isNotEmpty
-                                    ? video.uploaderName[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(
-                                  color: AppColors.accentGreen,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: AppDimensions.paddingSmall),
-                      // Uploader name
-                      Expanded(
-                        child: Text(
-                          video.uploaderName,
-                          style: TextStyle(
-                            fontSize: AppDimensions.fontSmall,
-                            color: AppColors.textSecondary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // View count
-                      Icon(
-                        Icons.remove_red_eye_outlined,
-                        size: 16,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatCount(video.viewCount),
-                        style: TextStyle(
-                          fontSize: AppDimensions.fontSmall,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return count.toString();
   }
 }
